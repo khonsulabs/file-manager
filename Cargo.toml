@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 flume = "0.10.14"
-interner = { path = "../interner" }
+interner = { git = "https://github.com/khonsulabs/interner" }
 
 [dev-dependencies]
 tempfile = "3.3.0"
