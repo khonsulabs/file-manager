@@ -3,17 +3,30 @@ mod fsync;
 pub mod memory;
 pub use fsync::{FSyncBatch, FSyncError};
 
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::io::{self, Read, Seek, Write};
 use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, MAIN_SEPARATOR};
 
-use interner::global::{GlobalPath, GlobalPool};
+use interner::global::{GlobalPath, GlobalPool, StaticPooledPath};
 
 static PATH_IDS: GlobalPool<PathBuf> = GlobalPool::new();
+static ROOT_PATH_ID: StaticPooledPath =
+    PATH_IDS.get_static_with(|| Cow::Owned(PathBuf::from(MAIN_SEPARATOR.to_string())));
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct PathId(GlobalPath);
+
+impl PathId {
+    pub fn root() -> Self {
+        Self(ROOT_PATH_ID.get())
+    }
+
+    pub fn is_root(&self) -> bool {
+        self == &Self::root()
+    }
+}
 
 impl<'a> From<&'a str> for PathId {
     fn from(path: &'a str) -> Self {

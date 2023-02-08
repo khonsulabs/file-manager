@@ -1,8 +1,9 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{hash_map, HashMap, HashSet};
 use std::io::{self, Read, Seek, Write};
 use std::num::TryFromIntError;
-use std::path::Path;
+use std::path::{PathBuf, MAIN_SEPARATOR};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use crate::fsync::FSyncManager;
@@ -20,7 +21,7 @@ pub struct MemoryFileManager {
 
 impl Default for MemoryFileManager {
     fn default() -> Self {
-        let root = PathId::from(Path::new("/"));
+        let root = PathId::from(PathBuf::from(MAIN_SEPARATOR.to_string()));
         Self {
             files: Arc::new(RwLock::new(
                 [(root.clone(), MemoryFile::new_directory(root.clone()))]
@@ -96,7 +97,7 @@ impl FileManager for MemoryFileManager {
                 // Find the first path along this path that exists. We need to
                 // ensure that it's a directory, not a file.
                 let mut paths_to_create = Vec::new();
-                let Some(mut path_to_check) = path.parent() else { unreachable!("/ always exists in files") };
+                let mut path_to_check = Cow::Borrowed(path);
                 loop {
                     match files.get(&path_to_check) {
                         Some(file) if matches!(file.backing, FileBacking::Directory) => break,
@@ -104,7 +105,7 @@ impl FileManager for MemoryFileManager {
                         None => {
                             let Some(next_root) = path_to_check.parent() else { unreachable!("/ always is in files") };
                             paths_to_create.push(path_to_check);
-                            path_to_check = next_root;
+                            path_to_check = Cow::Owned(next_root);
                         }
                     }
                 }
@@ -114,6 +115,7 @@ impl FileManager for MemoryFileManager {
                 // requested.
                 let mut paths_to_create = paths_to_create.into_iter().peekable();
                 while let Some(path_to_create) = paths_to_create.next() {
+                    let path_to_create = path_to_create.into_owned();
                     files.insert(
                         path_to_create.clone(),
                         MemoryFile::new_directory(path_to_create.clone()),
@@ -121,7 +123,7 @@ impl FileManager for MemoryFileManager {
 
                     let mut files = HashSet::new();
                     if let Some(next_file) = paths_to_create.peek().cloned() {
-                        files.insert(next_file);
+                        files.insert(next_file.into_owned());
                     }
                     directories.insert(path_to_create, files);
                 }
@@ -136,7 +138,7 @@ impl FileManager for MemoryFileManager {
         let mut directories = self.directories.lock().map_err(ToIo::to_io)?;
         let mut files = self.files.write().map_err(ToIo::to_io)?;
 
-        if &**path == Path::new("/") {
+        if path.is_root() {
             // No need to scan the structures when we're removing everything.
             directories.clear();
             directories.insert(path.clone(), HashSet::new());
